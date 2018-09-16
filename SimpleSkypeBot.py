@@ -5,14 +5,6 @@
 最小構成のSkypeBotセット。
 WatchDogクラスがSkypeのDBを監視して更新があったらSimpleSkypeBotを呼び出す。
 SimpleSkypeBotクラスは発言の内容を調べて対応した内容をSkypeへ送る。
-
-========================================
-バージョン1.0(2016-09-09)
-    完成。
-バージョン1.1(2017-09-26)
-    久しぶりに開いてdocとか書いた。
-    macでも使えることを確認。
-    なんか反応が遅いときがあるけど、ブラッシュアップはまたやる気があるときにでも。
 '''
 
 import sqlite3
@@ -37,14 +29,14 @@ conf_pattern = {
 
 # skype for windowsのDBがあるディレクトリのパス
 #     windowsでは C:/Users/username/AppData/Roaming/Skype/skypeId
-#     macでは /Users/username/Library/Application Support/Skype/skypeId
-conf_dbDirPath = '/Users/y-eguchi/Library/Application Support/Skype/y.egucchan'
+#     macでは     /Users/username/Library/Application Support/Skype/skypeId
+conf_dbDirPath = ''
 
 # skype for web httpの送信先。httpヘッダを調べて書いてね。
-conf_url = 'https://client-s.gateway.messenger.live.com/v1/users/ME/conversations/8:miroriiro/messages'
+conf_url = ''
 
 # http用のトークン。httpヘッダを同上。
-conf_token = 'registrationToken=U2lnbmF0dXJlOjI6Mjg6QVFRQUFBRHplK0ZNSHlxWEx0dGRBaFhCazhFbztWZXJzaW9uOjY6MToxO0lzc3VlVGltZTo0OjE5OjUyNDgxMDU4ODg5MDI5NzAxMzY7RXAuSWRUeXBlOjc6MToxO0VwLklkOjI6Mzg6Y2lkLSgtNzY4MzAzMDI3NjM2MDQ4MjY3OClAb3V0bG9vay5jb207RXAuRXBpZDo1OjM2OmQ4ODUwODc1LTNjZGItNDcwMS1iYjY0LWEwOTU5NmQ4ODE1ZDtFcC5Mb2dpblRpbWU6NzoxOjA7RXAuQXV0aFRpbWU6NDoxOTo1MjQ4MTA1ODg4ODg2NDA4MjIzO0VwLkF1dGhUeXBlOjc6MjoxNTtFcC5FeHBUaW1lOjQ6MTk6NTI0ODEwNjc1MjgyNzM4NzkwNDtVc3IuTmV0TWFzazoxMToxOjM7VXNyLlhmckNudDo2OjE6MDtVc3IuUmRyY3RGbGc6MjowOjtVc3IuRXhwSWQ6OToxOjA7VXNyLkV4cElkTGFzdExvZzo0OjE6MDtVc2VyLkF0aEN0eHQ6Mjo0MjA6Q2xOcmVYQmxWRzlyWlc0bVkybGtMU2d0TnpZNE16QXpNREkzTmpNMk1EUTRNalkzT0NsQWIzVjBiRzl2YXk1amIyMEJBMVZwWXhReEx6RXZNREF3TVNBeE1qb3dNRG93TUNCQlRReE9iM1JUY0dWamFXWnBaV1NLVVBhS3EyUmdsUUFBQUFBQUFFQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUtlUzVsWjNWalkyaGhiZ0FBQUFBQUFBQUFBQWRPYjFOamIzSmxBQUFBQUFRQUFBQUFBQUFBQUFBQUFJcFE5b3FyWkdDVkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQkNua3VaV2QxWTJOb1lXNEFBQUFBQUFFQUFBQUlBQUFBQTFWcFl3aEpaR1Z1ZEdsMGVRNUpaR1Z1ZEdsMGVWVndaR0YwWlFoRGIyNTBZV04wY3c1RGIyNTBZV04wYzFWd1pHRjBaUWhEYjIxdFpYSmpaUTFEYjIxdGRXNXBZMkYwYVc5dUZVTnZiVzExYm1sallYUnBiMjVTWldGa1QyNXNlUT09Ow=='
+conf_token = ''
 
 # ==============================
 # 設定ここまで
@@ -179,6 +171,7 @@ class WatchDog(FileSystemEventHandler):
         if events.src_path.endswith('main.db'):
             bot.main()
             return
+
 
 if __name__ in '__main__':
     bot = SimpleSkypeBot()
