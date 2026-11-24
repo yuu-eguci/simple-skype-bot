@@ -5,3 +5,6 @@ __pycache__/
 
 # これは最後に書かないとダメ。
 !.gitkeep
+
+# docker compose の既定のマウント先です。
+skype-data/

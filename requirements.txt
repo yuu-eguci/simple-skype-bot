@@ -1,0 +1,9 @@
+# 実行時の依存パッケージです。間接依存も含めてバージョンを固定しています。
+requests==2.34.2
+watchdog==7.1.1
+
+# requests の間接依存です。
+certifi==2026.11.20
+charset-normalizer==3.5.3
+idna==3.20
+urllib3==2.8.0
