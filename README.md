@@ -50,7 +50,7 @@ SimpleSkypeBot
 docker compose up --build -d --wait
 ```
 
-別の発言を追加して、Bot の返答を確認します。
+発言を追加して、Bot の返答を確認します。
 
 ```sh
 # 発言を追加します (main.db の Messages テーブルに 1 行追加されます)。
@@ -69,7 +69,7 @@ docker compose logs bot
 docker compose down -v
 ```
 
-上記の一連の動作は `sh dev/e2e.sh` で自動的に確認できます (CI でも実行しています)。
+上記の一連の動作は `sh dev/e2e.sh` で自動的に確認できます (CI でも実行しています)。終了時にデモ環境のコンテナとボリュームを削除します。
 
 ### 実際の Skype 環境で起動する場合 (参考)
 
