@@ -14,7 +14,10 @@ import sqlite3
 import sys
 import time
 from collections.abc import Mapping
+from contextlib import closing
 from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 from watchdog.events import FileSystemEventHandler
@@ -31,9 +34,9 @@ PATTERNS = {
 }
 
 # Skype for Web へ送信するリクエストヘッダーです。
+# Host / Content-Type / 接続関連のヘッダーは requests が URL と本文から設定します。
 HEADERS = {
     'Accept': 'application/json, text/javascript',
-    'Accept-Encoding': 'gzip, deflate',
     'Accept-Language': 'ja,en-US;q=0.8,en;q=0.6',
     'BehaviorOverride': 'redirectAs404',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -42,11 +45,8 @@ HEADERS = {
         ' deviceType=1; country=n/a; clientName=skype.com;'
         ' clientVer=908/1.42.0.98//skype.com'
     ),
-    'Connection': 'keep-alive',
     'ContextId': 'tcid=146372019467711519',
-    'Content-Type': 'application/json',
     'Expires': '0',
-    'Host': 'client-s.gateway.messenger.live.com',
     'Origin': 'https://web.skype.com',
     'Pragma': 'no-cache',
     'Referer': 'https://web.skype.com/ja/',
@@ -57,9 +57,15 @@ HEADERS = {
     ),
 }
 
+# HTTP 送信のタイムアウト (秒) です。
+REQUEST_TIMEOUT_SECONDS = 10
+# main.db の読み込みに失敗した場合の試行回数と待機時間 (秒) です。
+MAX_DB_ATTEMPTS = 3
+DB_RETRY_DELAY_SECONDS = 0.5
+
 
 class ConfigError(Exception):
-    """設定値が不足している場合の例外です。"""
+    """設定値が不足している、または不正な場合の例外です。"""
 
 
 @dataclass(frozen=True)
@@ -82,95 +88,117 @@ def load_config(environ: Mapping[str, str]) -> Config:
     missing = [name for name in names.values() if not environ.get(name)]
     if missing:
         raise ConfigError('環境変数が設定されていません: ' + ', '.join(missing))
-    return Config(**{field: environ[name] for field, name in names.items()})
+    config = Config(**{field: environ[name] for field, name in names.items()})
+    # トークンを平文で送信しないよう、http:// は明示的に許可された場合のみ受け付けます。
+    allowed_schemes = {'https', 'http'} if environ.get('SKYPE_ALLOW_HTTP') == '1' else {'https'}
+    if urlsplit(config.url).scheme not in allowed_schemes:
+        raise ConfigError(
+            'SKYPE_URL には https:// で始まる URL を指定してください'
+            ' (ローカルでの検証時のみ SKYPE_ALLOW_HTTP=1 で http:// を許可できます)。'
+        )
+    return config
+
+
+def validate_patterns(patterns: Mapping[str, str]) -> None:
+    """返答がキーワードを含むと Bot が自分の返答に反応し続けるため、その設定を拒否します。"""
+    for key in patterns:
+        for reply in patterns.values():
+            if key.casefold() in reply.casefold():
+                raise ConfigError(
+                    f'返答 {reply!r} がキーワード {key!r} を含むため、'
+                    'Bot が自分の返答に反応し続けてしまいます。PATTERNS を見直してください。'
+                )
 
 
 class SimpleSkypeBot:
     """main.db から発言の内容を取得し、対応する返答を Skype へ送信します。"""
 
-    def __init__(self, config, session=None, start_timestamp=None):
+    def __init__(
+        self, config, session=None, start_timestamp=None, retry_delay=DB_RETRY_DELAY_SECONDS
+    ):
         self.config = config
         self.session = session if session is not None else requests.Session()
         # BOT 起動時のタイムスタンプです。これより後の発言にのみ反応します。
         self.start_timestamp = (
             start_timestamp if start_timestamp is not None else round(time.time())
         )
-        # 反応済みの発言 ID のリストです。
-        self.done_ids = []
+        self.retry_delay = retry_delay
+        # 処理済みの発言 ID の最大値です。これより大きい ID の発言のみを取得します。
+        self.last_id = 0
 
     def main(self):
-        """トップレベルメソッドです。"""
-        # まれに sqlite3.OperationalError: disk I/O error が発生するため、その場合はやり直します。
-        while True:
-            try:
-                recordList = self.selectRecordList()
-                break
-            except sqlite3.OperationalError:
-                logger.warning('sqlite3.OperationalError が発生しました。')
-                continue
-        if not recordList:
-            return False
-        for record in recordList:
-            # 発言の内容に応じて返答を作ります。
+        """新しい発言を取得し、キーワードを含む発言に返答します。"""
+        records = self.selectRecordListWithRetry()
+        for record in records:
+            # 返答の有無にかかわらず処理済みとし、同じ発言を再度処理しないようにします。
+            self.last_id = max(self.last_id, record['id'])
             reply = self.getReply(record['body_xml'])
-            if not reply:
-                return None
-            # 反応済みリストに ID を追加します。
-            self.done_ids.append(record['id'])
-            # 返答を Skype へ送信します。
-            self.sendSkype(reply)
-        return None
+            if reply is not None:
+                self.sendSkype(reply)
+
+    def selectRecordListWithRetry(self):
+        """main.db の読み込みを、失敗時は回数を限って再試行します。"""
+        # Skype の書き込み中などに sqlite3.OperationalError が発生することがあります。
+        # 再試行しても失敗する場合は今回の処理を見送り、次の変更検知時に改めて読み込みます。
+        for attempt in range(1, MAX_DB_ATTEMPTS + 1):
+            try:
+                return self.selectRecordList()
+            except sqlite3.OperationalError as error:
+                logger.warning(
+                    'main.db の読み込みに失敗しました (%d/%d 回目): %s',
+                    attempt,
+                    MAX_DB_ATTEMPTS,
+                    error,
+                )
+                if attempt < MAX_DB_ATTEMPTS:
+                    time.sleep(self.retry_delay)
+        return []
+
+    def connect(self):
+        """main.db を読み取り専用で開きます。"""
+        uri = Path(self.config.db_dir, 'main.db').absolute().as_uri() + '?mode=ro'
+        return sqlite3.connect(uri, uri=True)
 
     def selectRecordList(self):
-        """main.db からレコードを取得します。"""
-        # connection をグローバルに作るとマルチスレッドのエラーになるため、ここで作ります。
-        connection = sqlite3.connect(self.config.db_dir + '/main.db')
-        cursor = connection.cursor()
-        # SQL の「body_xml に PATTERNS の key を含む」部分を作ります。
-        # AND (1=0 OR `body_xml` LIKE '%key%' OR `body_xml` LIKE '%key%') のような形です。
-        likePart = ''
-        if PATTERNS:
-            likePart = 'AND (1=0 '
-            for key in PATTERNS:
-                likePart += f"OR `body_xml` LIKE '%{key}%' "
-            likePart = likePart + ')'
-        # SQL の「反応済みの ID を除く」部分を作ります。AND `id` NOT IN (**,**) のような形です。
-        idPart = ''
-        if self.done_ids:
-            idPart = 'AND `id` NOT IN ('
-            for doneId in self.done_ids:
-                idPart += str(doneId) + ','
-            idPart = idPart[0:-1] + ')'
-        # 「BOT 起動後」「PATTERNS の key を含む」「反応済みの ID を除く」発言を取得します。
-        sql = f'SELECT id,body_xml FROM `Messages` WHERE `timestamp`>? {likePart} {idPart}'  # noqa: S608
-        bind = (self.start_timestamp,)
-        cursor.execute(sql, bind)
-        rows = cursor.fetchall()
-        connection.close()
-        if not rows:
-            return False
+        """BOT 起動後に追加された未処理の発言を ID 順に取得します。"""
+        # connection を使い回すとスレッドをまたいでエラーになるため、毎回作ります。
+        with closing(self.connect()) as connection:
+            rows = connection.execute(
+                'SELECT id, body_xml FROM Messages WHERE timestamp > ? AND id > ? ORDER BY id',
+                (self.start_timestamp, self.last_id),
+            ).fetchall()
         return [{'id': row[0], 'body_xml': row[1]} for row in rows]
 
     def getReply(self, body_xml):
         """body_xml の内容に対応する返答を返します。該当しない場合は None を返します。"""
+        if not body_xml:
+            return None
+        body = body_xml.casefold()
         for key, value in PATTERNS.items():
-            if key in body_xml:
+            if key.casefold() in body:
                 return value
         return None
 
     def sendSkype(self, reply):
-        """Skype for Web へ返答を送信します。"""
-        clientmessageid = random.randint(1000000000000, 9999999999999)  # noqa: S311
-        postjson = (
-            '{'
-            + f'content        : "{reply}",'
-            + f'clientmessageid: "{clientmessageid}",'
-            + 'messagetype    : "RichText",'
-            + 'contenttype    : "text",'
-            + '}'
-        )
+        """Skype for Web へ返答を送信します。送信できた場合は True を返します。"""
+        payload = {
+            'content': reply,
+            'clientmessageid': str(random.randint(1000000000000, 9999999999999)),  # noqa: S311
+            'messagetype': 'RichText',
+            'contenttype': 'text',
+        }
         headers = {**HEADERS, 'RegistrationToken': self.config.token}
-        self.session.post(self.config.url, data=postjson, headers=headers)
+        try:
+            response = self.session.post(
+                self.config.url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS
+            )
+            response.raise_for_status()
+        except requests.RequestException as error:
+            # 例外のメッセージには URL が含まれるため、種類とステータスコードのみを出力します。
+            status = getattr(error.response, 'status_code', None)
+            logger.error('返答の送信に失敗しました: %s (status=%s)', type(error).__name__, status)
+            return False
+        logger.info('返答を送信しました: %s', reply)
         return True
 
 
@@ -183,7 +211,7 @@ class WatchDog(FileSystemEventHandler):
 
     def on_modified(self, event):
         """main.db が変更された (Skype で発言があった) 場合に Bot を動かします。"""
-        if event.src_path.endswith('main.db'):
+        if os.path.basename(event.src_path) == 'main.db':
             self.bot.main()
 
 
@@ -192,6 +220,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     try:
         config = load_config(os.environ)
+        validate_patterns(PATTERNS)
     except ConfigError as error:
         logger.error('%s', error)
         return 1
