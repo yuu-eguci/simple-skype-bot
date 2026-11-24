@@ -3,7 +3,7 @@
 最小構成の Skype Bot です。
 WatchDog クラスが Skype の DB を監視し、更新があると SimpleSkypeBot を呼び出します。
 SimpleSkypeBot クラスは発言の内容を調べ、対応する返答を Skype へ送信します。
-設定値は環境変数 SKYPE_DB_DIR, SKYPE_URL, SKYPE_TOKEN から読み込みます。
+設定値は環境変数 SKYPE_DB_DIR, SKYPE_URL, SKYPE_TOKEN (省略可能な SKYPE_ALLOW_HTTP) から読み込みます。
 """
 
 import logging
