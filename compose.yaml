@@ -1,0 +1,21 @@
+name: simple-skype-bot
+
+services:
+  bot:
+    build:
+      context: .
+      target: runtime
+    image: simple-skype-bot:runtime
+    environment:
+      SKYPE_DB_DIR: /skype
+      SKYPE_URL: ${SKYPE_URL:-}
+      SKYPE_TOKEN: ${SKYPE_TOKEN:-}
+    volumes:
+      - ${SKYPE_HOST_DB_DIR:-./skype-data}:/skype:ro
+
+  dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      target: dev
+    image: simple-skype-bot:dev

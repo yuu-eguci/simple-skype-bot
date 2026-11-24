@@ -1,0 +1,10 @@
+# テストと lint 用の依存パッケージです。間接依存も含めてバージョンを固定しています。
+-r requirements.txt
+pytest==9.2.0
+ruff==0.17.6
+
+# pytest の間接依存です。
+iniconfig==2.3.1
+packaging==26.4
+pluggy==1.7.0
+Pygments==2.21.0

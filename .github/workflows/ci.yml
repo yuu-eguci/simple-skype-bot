@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: 開発用イメージをビルドします
+        run: docker compose --profile dev build dev
+
+      - name: lint を実行します
+        run: |
+          docker compose run --rm dev ruff check .
+          docker compose run --rm dev ruff format --check .
+
+      - name: テストを実行します
+        run: docker compose run --rm dev pytest
+
+      - name: 実行用イメージをビルドします
+        run: docker compose build bot
