@@ -14,6 +14,7 @@ SimpleSkypeBot
 - `main.db` は読み取り専用で開き、変更しません。
 - 返答がいずれかのキーワードを含む設定の場合は、Bot が自分の返答に反応し続けてしまうため、起動時にエラーとして終了します。
 - 送信に失敗した場合はエラーをログに出力し、監視を続けます。ログに URL やトークンは出力しません。
+- `main.db` 内のすべての会話の発言に反応し、返答は常に `SKYPE_URL` の会話へ送信します。会話ごとの絞り込みは行いません。
 
 ## 現在の状況
 
@@ -29,7 +30,9 @@ SimpleSkypeBot
 
 ## 設定
 
-設定はすべて環境変数で行います。トークンなどの秘密情報をソースコードやリポジトリに書かないでください。
+Bot の接続先などの設定は環境変数で行います (キーワードと返答のみ `SimpleSkypeBot.py` の `PATTERNS` で設定します)。
+トークンなどの秘密情報をソースコードやリポジトリに書かないでください。
+デモ環境 (`compose.yaml`) では、fake-skype 向けのダミーの値を設定済みです。
 
 | 環境変数 | 説明 |
 | --- | --- |
@@ -96,7 +99,7 @@ docker compose run --build --rm dev ruff check .
 docker compose run --build --rm dev ruff format --check .
 ```
 
-GitHub Actions でも同じコマンドを実行しています。
+GitHub Actions では、これらに加えて `sh dev/e2e.sh` も実行しています。
 
 ## 参考: 実 Skype 環境での設定値の取得方法
 
