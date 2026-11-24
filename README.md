@@ -42,13 +42,46 @@ SimpleSkypeBot
 
 ## 起動方法
 
-`docker compose` の `bot` サービスは、ホストの `SKYPE_HOST_DB_DIR` を読み取り専用で `/skype` にマウントして起動します。
+`docker compose up` で、Bot と Skype 側を模した `fake-skype` サービスが起動します。
+`fake-skype` は共有ボリューム上の `main.db` への発言の追加と、Bot からの返答の受信を担当します。
+外部のサービスには接続しません。
 
 ```sh
-export SKYPE_HOST_DB_DIR="/path/to/skype/skypeId"
-export SKYPE_URL="https://..."
-export SKYPE_TOKEN="..."
-docker compose up --build bot
+docker compose up --build -d --wait
+```
+
+別の発言を追加して、Bot の返答を確認します。
+
+```sh
+# 発言を追加します (main.db の Messages テーブルに 1 行追加されます)。
+docker compose exec fake-skype python fake_skype.py say "Hello, bot"
+
+# fake-skype が受信した返答を表示します。["BOT: hi."] と表示されます。
+docker compose exec fake-skype python fake_skype.py received
+
+# Bot のログを確認します。
+docker compose logs bot
+```
+
+終了するときは、次のコマンドでコンテナとデモ用のボリュームを削除します。
+
+```sh
+docker compose down -v
+```
+
+上記の一連の動作は `sh dev/e2e.sh` で自動的に確認できます (CI でも実行しています)。
+
+### 実際の Skype 環境で起動する場合 (参考)
+
+Skype の提供終了により、現在は動作を確認できません。
+ホストの Skype データディレクトリを読み取り専用でマウントし、環境変数を指定して起動します。
+
+```sh
+docker build --target runtime -t simple-skype-bot:runtime .
+docker run --rm \
+  -e SKYPE_DB_DIR=/skype -e SKYPE_URL -e SKYPE_TOKEN \
+  -v "/path/to/skype/skypeId:/skype:ro" \
+  simple-skype-bot:runtime
 ```
 
 必要な環境変数が設定されていない場合や値が不正な場合は、環境変数名と理由を表示して終了します (値そのものは表示しません)。
