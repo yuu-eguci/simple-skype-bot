@@ -28,5 +28,5 @@ jobs:
       - name: テストを実行します
         run: docker compose run --rm dev pytest
 
-      - name: 実行用イメージをビルドします
-        run: docker compose build bot
+      - name: デモ環境で E2E テストを実行します
+        run: sh dev/e2e.sh

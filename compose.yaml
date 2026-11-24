@@ -1,6 +1,17 @@
+# Skype 側を模した fake-skype と Bot を起動するデモ環境です。外部のサービスには接続しません。
 name: simple-skype-bot
 
 services:
+  fake-skype:
+    build:
+      context: .
+      target: fake-skype
+    image: simple-skype-bot:fake-skype
+    environment:
+      FAKE_SKYPE_TOKEN: dummy-token
+    volumes:
+      - fake-skype-data:/skype
+
   bot:
     build:
       context: .
@@ -8,10 +19,15 @@ services:
     image: simple-skype-bot:runtime
     environment:
       SKYPE_DB_DIR: /skype
-      SKYPE_URL: ${SKYPE_URL:-}
-      SKYPE_TOKEN: ${SKYPE_TOKEN:-}
+      SKYPE_URL: http://fake-skype:8080/v1/users/ME/conversations/demo/messages
+      SKYPE_TOKEN: dummy-token
+      # fake-skype はコンテナ間の通信のみのため、http:// を許可します。
+      SKYPE_ALLOW_HTTP: "1"
     volumes:
-      - ${SKYPE_HOST_DB_DIR:-./skype-data}:/skype:ro
+      - fake-skype-data:/skype:ro
+    depends_on:
+      fake-skype:
+        condition: service_healthy
 
   dev:
     profiles: ["dev"]
@@ -19,3 +35,6 @@ services:
       context: .
       target: dev
     image: simple-skype-bot:dev
+
+volumes:
+  fake-skype-data:

@@ -3,8 +3,5 @@
 .DS_Store
 __pycache__/
 
-# これは最後に書かないとダメ。
+# 否定パターンは最後に記述する必要があります。
 !.gitkeep
-
-# docker compose の既定のマウント先です。
-skype-data/
